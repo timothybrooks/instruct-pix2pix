@@ -1,6 +1,3 @@
-# File modified by authors of InstructPix2Pix from original (https://github.com/CompVis/stable-diffusion).
-# See more details in LICENSE.
-
 import argparse, os, sys, datetime, glob
 import numpy as np
 import time
@@ -26,8 +23,8 @@ from pytorch_lightning.plugins import DDPPlugin
 
 sys.path.append("./stable_diffusion")
 
-from stable_diffusion.ldm.data.base import Txt2ImgIterableBaseDataset
-from stable_diffusion.ldm.util import instantiate_from_config
+from ldm.data.base import Txt2ImgIterableBaseDataset
+from ldm.util import instantiate_from_config
 
 
 def get_parser(**parser_kwargs):
@@ -553,6 +550,7 @@ if __name__ == "__main__":
     nowname = f"{cfg_name}_{opt.name}"
     logdir = os.path.join(opt.logdir, nowname)
     ckpt = os.path.join(logdir, "checkpoints", "last.ckpt")
+    resume = False
 
     if os.path.isfile(ckpt):
         opt.resume_from_checkpoint = ckpt
@@ -560,9 +558,7 @@ if __name__ == "__main__":
         opt.base = base_configs + opt.base
         _tmp = logdir.split("/")
         nowname = _tmp[-1]
-        # By default, when finetuning from Stable Diffusion, we load the EMA-only checkpoint to initialize all weights.
-        # If resuming InstructPix2Pix from a finetuning checkpoint, instead load both EMA and non-EMA weights.
-        opt.model.params.load_ema = True
+        resume = True
 
     ckptdir = os.path.join(logdir, "checkpoints")
     cfgdir = os.path.join(logdir, "configs")
@@ -576,6 +572,12 @@ if __name__ == "__main__":
         configs = [OmegaConf.load(cfg) for cfg in opt.base]
         cli = OmegaConf.from_dotlist(unknown)
         config = OmegaConf.merge(*configs, cli)
+
+        if resume:
+            # By default, when finetuning from Stable Diffusion, we load the EMA-only checkpoint to initialize all weights.
+            # If resuming InstructPix2Pix from a finetuning checkpoint, instead load both EMA and non-EMA weights.
+            config.model.params.load_ema = True
+
         lightning_config = config.pop("lightning", OmegaConf.create())
         # merge trainer cli with config
         trainer_config = lightning_config.get("trainer", OmegaConf.create())

@@ -1,7 +1,7 @@
 import json
 from argparse import ArgumentParser
 
-from .generate_txt_dataset import DELIMITER_0, DELIMITER_1, STOP
+from generate_txt_dataset import DELIMITER_0, DELIMITER_1, STOP
 
 
 def main(input_path: str, output_path: str):
@@ -19,7 +19,7 @@ def main(input_path: str, output_path: str):
 
 if __name__ == "__main__":
     parser = ArgumentParser()
-    parser.add_argument("input-path", type=str)
-    parser.add_argument("output-path", type=str)
+    parser.add_argument("--input-path", required=True, type=str)
+    parser.add_argument("--output-path", required=True, type=str)
     args = parser.parse_args()
     main(args.input_path, args.output_path)

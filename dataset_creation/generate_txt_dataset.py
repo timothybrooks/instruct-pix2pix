@@ -65,7 +65,7 @@ def main(openai_model: str, num_samples: int, num_partitions: int, partition: in
     dataset = dataset[permutation]
     captions = dataset["TEXT"]
     urls = dataset["URL"]
-    output_path = f"prompts/dataset=laion-aesthetics-6.5_model={openai_model}_samples={num_samples}_partition={partition}.jsonl"  # fmt: skip
+    output_path = f"data/dataset=laion-aesthetics-6.5_model={openai_model}_samples={num_samples}_partition={partition}.jsonl"  # fmt: skip
     print(f"Prompt file path: {output_path}")
 
     count = 0
@@ -88,7 +88,7 @@ def main(openai_model: str, num_samples: int, num_partitions: int, partition: in
                     continue
                 if openai.Moderation.create(caption)["results"][0]["flagged"]:
                     continue
-                edit_output = generate(caption)
+                edit_output = generate(openai_model, caption)
                 if edit_output is not None:
                     edit, output = edit_output
                     fp.write(f"{json.dumps(dict(caption=caption, edit=edit, output=output, url=url))}\n")
@@ -102,8 +102,8 @@ def main(openai_model: str, num_samples: int, num_partitions: int, partition: in
 
 if __name__ == "__main__":
     parser = ArgumentParser()
-    parser.add_argument("openai-api-key", type=str)
-    parser.add_argument("openai-model", type=str)
+    parser.add_argument("--openai-api-key", required=True, type=str)
+    parser.add_argument("--openai-model", required=True, type=str)
     parser.add_argument("--num-samples", default=10000, type=int)
     parser.add_argument("--num-partitions", default=1, type=int)
     parser.add_argument("--partition", default=0, type=int)

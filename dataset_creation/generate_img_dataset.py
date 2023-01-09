@@ -1,5 +1,6 @@
 import argparse
 import json
+import sys
 from pathlib import Path
 
 import k_diffusion
@@ -12,8 +13,11 @@ from PIL import Image
 from pytorch_lightning import seed_everything
 from tqdm import tqdm
 
-from stable_diffusion.ldm.modules.attention import CrossAttention
-from stable_diffusion.ldm.util import instantiate_from_config
+sys.path.append("./")
+sys.path.append("./stable_diffusion")
+
+from ldm.modules.attention import CrossAttention
+from ldm.util import instantiate_from_config
 from metrics.clip_similarity import ClipSimilarity
 
 
@@ -112,14 +116,28 @@ def to_pil(image: torch.Tensor) -> Image.Image:
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "out_dir",
+        "--out_dir",
         type=str,
+        required=True,
         help="Path to output dataset directory.",
     )
     parser.add_argument(
-        "prompts_file",
+        "--prompts_file",
         type=str,
+        required=True,
         help="Path to prompts .jsonl file.",
+    )
+    parser.add_argument(
+        "--ckpt",
+        type=str,
+        default="stable_diffusion/models/ldm/stable-diffusion-v1/v1-5-pruned-emaonly.ckpt",
+        help="Path to stable diffusion checkpoint.",
+    )
+    parser.add_argument(
+        "--vae-ckpt",
+        type=str,
+        default="stable_diffusion/models/ldm/stable-diffusion-v1/vae-ft-mse-840000-ema-pruned.ckpt",
+        help="Path to vae checkpoint.",
     )
     parser.add_argument(
         "--steps",
@@ -200,9 +218,9 @@ def main():
     seed_everything(global_seed)
 
     model = load_model_from_config(
-        OmegaConf.load("configs/stable-diffusion/v1-inference.yaml"),
-        ckpt="models/ldm/stable-diffusion-v1/v1-5-pruned-emaonly.ckpt",
-        vae_ckpt="models/ldm/stable-diffusion-v1/vae-ft-mse-840000-ema-pruned.ckpt",
+        OmegaConf.load("stable_diffusion/configs/stable-diffusion/v1-inference.yaml"),
+        ckpt=opt.ckpt,
+        vae_ckpt=opt.vae_ckpt,
     )
     model.cuda().eval()
     model_wrap = k_diffusion.external.CompVisDenoiser(model)
@@ -229,7 +247,7 @@ def main():
             with open(prompt_dir.joinpath("prompt.json"), "w") as fp:
                 json.dump(prompt, fp)
 
-            cond = model.get_learned_conditioning([prompt["input"], prompt["output"]])
+            cond = model.get_learned_conditioning([prompt["caption"], prompt["output"]])
             results = {}
 
             with tqdm(total=opt.n_samples, desc="Samples") as progress_bar:
@@ -255,7 +273,7 @@ def main():
                     x1 = x_samples_ddim[1]
 
                     clip_sim_0, clip_sim_1, clip_sim_dir, clip_sim_image = clip_similarity(
-                        x0[None], x1[None], [prompt["input"]], [prompt["output"]]
+                        x0[None], x1[None], [prompt["caption"]], [prompt["output"]]
                     )
 
                     results[seed] = dict(

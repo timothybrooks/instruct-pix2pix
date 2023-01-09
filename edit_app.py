@@ -73,8 +73,7 @@ class CFGDenoiser(nn.Module):
         return out_uncond + text_cfg_scale * (out_cond - out_img_cond) + image_cfg_scale * (out_img_cond - out_uncond)
 
 
-def load_model_from_config(config, ckpt, vae_ckpt=None, verbose=False, cached=False):
-    print(f"Cache: {cached}")
+def load_model_from_config(config, ckpt, vae_ckpt=None, verbose=False):
     print(f"Loading model from {ckpt}")
     pl_sd = torch.load(ckpt, map_location="cpu")
     if "global_step" in pl_sd:
@@ -87,7 +86,7 @@ def load_model_from_config(config, ckpt, vae_ckpt=None, verbose=False, cached=Fa
             k: vae_sd[k[len("first_stage_model.") :]] if k.startswith("first_stage_model.") else v
             for k, v in sd.items()
         }
-    model = instantiate_from_config(config.model, cached=cached)
+    model = instantiate_from_config(config.model)
     m, u = model.load_state_dict(sd, strict=False)
     if len(m) > 0 and verbose:
         print("missing keys:")
@@ -101,8 +100,8 @@ def load_model_from_config(config, ckpt, vae_ckpt=None, verbose=False, cached=Fa
 def main():
     parser = ArgumentParser()
     parser.add_argument("--resolution", default=512, type=int)
-    parser.add_argument("--config", default="configs/instruct-pix2pix/generate.yaml", type=str)
-    parser.add_argument("--ckpt", default="checkpoints/instruct-pix2pix-00-20000.ckpt", type=str)
+    parser.add_argument("--config", default="configs/generate.yaml", type=str)
+    parser.add_argument("--ckpt", default="checkpoints/instruct-pix2pix-00-22000.ckpt", type=str)
     parser.add_argument("--vae-ckpt", default=None, type=str)
     args = parser.parse_args()
 
@@ -188,7 +187,7 @@ def main():
             return [seed, text_cfg_scale, image_cfg_scale, edited_image]
 
     def reset():
-        return [50, "Randomize Seed", random.randint(0, 100000), "Fix CFG", 7.5, 1.5, None]
+        return [0, "Randomize Seed", 1371, "Fix CFG", 7.5, 1.5, None]
 
     with gr.Blocks(css="footer {visibility: hidden}") as demo:
         with gr.Row():
@@ -208,7 +207,7 @@ def main():
             edited_image.style(height=512, width=512)
 
         with gr.Row():
-            steps = gr.Number(value=50, precision=0, label="Steps", interactive=True)
+            steps = gr.Number(value=100, precision=0, label="Steps", interactive=True)
             randomize_seed = gr.Radio(
                 ["Fix Seed", "Randomize Seed"],
                 value="Randomize Seed",
@@ -216,7 +215,7 @@ def main():
                 show_label=False,
                 interactive=True,
             )
-            seed = gr.Number(value=random.randint(0, 100000), precision=0, label="Seed", interactive=True)
+            seed = gr.Number(value=1371, precision=0, label="Seed", interactive=True)
             randomize_cfg = gr.Radio(
                 ["Fix CFG", "Randomize CFG"],
                 value="Fix CFG",

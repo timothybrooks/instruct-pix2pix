@@ -3,7 +3,7 @@
 
 model:
   base_learning_rate: 1.0e-04
-  target: stable_diffusion.ldm.models.diffusion.ddpm_edit.LatentDiffusion
+  target: ldm.models.diffusion.ddpm_edit.LatentDiffusion
   params:
     linear_start: 0.00085
     linear_end: 0.0120
@@ -24,7 +24,7 @@ model:
     load_ema: true
 
     scheduler_config: # 10000 warmup steps
-      target: stable_diffusion.ldm.lr_scheduler.LambdaLinearScheduler
+      target: ldm.lr_scheduler.LambdaLinearScheduler
       params:
         warm_up_steps: [ 0 ]
         cycle_lengths: [ 10000000000000 ] # incredibly large number to prevent corner cases
@@ -33,7 +33,7 @@ model:
         f_min: [ 1. ]
 
     unet_config:
-      target: stable_diffusion.ldm.modules.diffusionmodules.openaimodel.UNetModel
+      target: ldm.modules.diffusionmodules.openaimodel.UNetModel
       params:
         image_size: 32 # unused
         in_channels: 8
@@ -50,7 +50,7 @@ model:
         legacy: False
 
     first_stage_config:
-      target: stable_diffusion.ldm.models.autoencoder.AutoencoderKL
+      target: ldm.models.autoencoder.AutoencoderKL
       params:
         embed_dim: 4
         monitor: val/rec_loss
@@ -73,7 +73,7 @@ model:
           target: torch.nn.Identity
 
     cond_stage_config:
-      target: stable_diffusion.ldm.modules.encoders.modules.FrozenCLIPEmbedder
+      target: ldm.modules.encoders.modules.FrozenCLIPEmbedder
 
 data:
   target: main.DataModuleFromConfig
@@ -84,9 +84,9 @@ data:
     validation:
       target: edit_dataset.EditDataset
       params:
-        path: /shared/holynski/laion-aesthetics-6.5_edit-model=davinci-laion700-1epoch_samples=10000/laion-aesthetics-6.5_edit-model=davinci-laion700-1epoch_samples=10000
-        cache_dir:  /shared/timbrooks/image-edit-data/caches
-        cache_name: davinci10k
+        path: data/clip-filtered-dataset
+        cache_dir:  data/
+        cache_name: data_10k
         split: val
         min_text_sim: 0.2
         min_image_sim: 0.75

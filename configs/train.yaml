@@ -3,7 +3,7 @@
 
 model:
   base_learning_rate: 1.0e-04
-  target: stable_diffusion.ldm.models.diffusion.ddpm_edit.LatentDiffusion
+  target: ldm.models.diffusion.ddpm_edit.LatentDiffusion
   params:
     ckpt_path: stable_diffusion/models/ldm/stable-diffusion-v1/v1-5-pruned-emaonly.ckpt
     linear_start: 0.00085
@@ -23,7 +23,7 @@ model:
     load_ema: false
 
     scheduler_config: # 10000 warmup steps
-      target: stable_diffusion.ldm.lr_scheduler.LambdaLinearScheduler
+      target: ldm.lr_scheduler.LambdaLinearScheduler
       params:
         warm_up_steps: [ 0 ]
         cycle_lengths: [ 10000000000000 ] # incredibly large number to prevent corner cases
@@ -32,7 +32,7 @@ model:
         f_min: [ 1. ]
 
     unet_config:
-      target: stable_diffusion.ldm.modules.diffusionmodules.openaimodel.UNetModel
+      target: ldm.modules.diffusionmodules.openaimodel.UNetModel
       params:
         image_size: 32 # unused
         in_channels: 8
@@ -49,7 +49,7 @@ model:
         legacy: False
 
     first_stage_config:
-      target: stable_diffusion.ldm.models.autoencoder.AutoencoderKL
+      target: ldm.models.autoencoder.AutoencoderKL
       params:
         embed_dim: 4
         monitor: val/rec_loss
@@ -72,7 +72,7 @@ model:
           target: torch.nn.Identity
 
     cond_stage_config:
-      target: stable_diffusion.ldm.modules.encoders.modules.FrozenCLIPEmbedder
+      target: ldm.modules.encoders.modules.FrozenCLIPEmbedder
 
 data:
   target: main.DataModuleFromConfig
@@ -82,7 +82,7 @@ data:
     train:
       target: edit_dataset.EditDataset
       params:
-        path: /home/timbrooks/instruct-pix2pix-datasets/20-20-75
+        path: data/clip-filtered-dataset
         split: train
         min_resize_res: 256
         max_resize_res: 256
@@ -91,7 +91,7 @@ data:
     validation:
       target: edit_dataset.EditDataset
       params:
-        path: /home/timbrooks/instruct-pix2pix-datasets/20-20-75
+        path: data/clip-filtered-dataset
         split: val
         min_resize_res: 256
         max_resize_res: 256

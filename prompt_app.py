@@ -48,8 +48,8 @@ def main(openai_model: str):
 
 if __name__ == "__main__":
     parser = ArgumentParser()
-    parser.add_argument("openai-api-key", type=str)
-    parser.add_argument("openai-model", type=str)
+    parser.add_argument("--openai-api-key", required=True, type=str)
+    parser.add_argument("--openai-model", required=True, type=str)
     args = parser.parse_args()
     openai.api_key = args.openai_api_key
     main(args.openai_model)
