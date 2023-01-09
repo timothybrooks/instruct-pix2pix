@@ -1,24 +1,33 @@
-import argparse, os, sys, datetime, glob, importlib, csv
+# File modified by authors of InstructPix2Pix from original (https://github.com/CompVis/stable-diffusion).
+# See more details in LICENSE.
+
+import argparse, os, sys, datetime, glob
 import numpy as np
 import time
 import torch
 import torchvision
 import pytorch_lightning as pl
+import json
+import pickle
 
 from packaging import version
 from omegaconf import OmegaConf
-from torch.utils.data import random_split, DataLoader, Dataset, Subset
+from torch.utils.data import DataLoader, Dataset
 from functools import partial
 from PIL import Image
 
+import torch.distributed as dist
 from pytorch_lightning import seed_everything
 from pytorch_lightning.trainer import Trainer
 from pytorch_lightning.callbacks import ModelCheckpoint, Callback, LearningRateMonitor
 from pytorch_lightning.utilities.distributed import rank_zero_only
 from pytorch_lightning.utilities import rank_zero_info
+from pytorch_lightning.plugins import DDPPlugin
 
-from ldm.data.base import Txt2ImgIterableBaseDataset
-from ldm.util import instantiate_from_config
+sys.path.append("./stable_diffusion")
+
+from stable_diffusion.ldm.data.base import Txt2ImgIterableBaseDataset
+from stable_diffusion.ldm.util import instantiate_from_config
 
 
 def get_parser(**parser_kwargs):
@@ -114,10 +123,8 @@ def get_parser(**parser_kwargs):
     )
     parser.add_argument(
         "--scale_lr",
-        type=str2bool,
-        nargs="?",
-        const=True,
-        default=True,
+        action="store_true",
+        default=False,
         help="scale base-lr by ngpu * batch_size * n_accumulate",
     )
     return parser
@@ -202,7 +209,7 @@ class DataModuleFromConfig(pl.LightningDataModule):
             init_fn = None
         return DataLoader(self.datasets["train"], batch_size=self.batch_size,
                           num_workers=self.num_workers, shuffle=False if is_iterable_dataset else True,
-                          worker_init_fn=init_fn)
+                          worker_init_fn=init_fn, persistent_workers=True)
 
     def _val_dataloader(self, shuffle=False):
         if isinstance(self.datasets['validation'], Txt2ImgIterableBaseDataset) or self.use_worker_init_fn:
@@ -213,7 +220,7 @@ class DataModuleFromConfig(pl.LightningDataModule):
                           batch_size=self.batch_size,
                           num_workers=self.num_workers,
                           worker_init_fn=init_fn,
-                          shuffle=shuffle)
+                          shuffle=shuffle, persistent_workers=True)
 
     def _test_dataloader(self, shuffle=False):
         is_iterable_dataset = isinstance(self.datasets['train'], Txt2ImgIterableBaseDataset)
@@ -226,7 +233,7 @@ class DataModuleFromConfig(pl.LightningDataModule):
         shuffle = shuffle and (not is_iterable_dataset)
 
         return DataLoader(self.datasets["test"], batch_size=self.batch_size,
-                          num_workers=self.num_workers, worker_init_fn=init_fn, shuffle=shuffle)
+                          num_workers=self.num_workers, worker_init_fn=init_fn, shuffle=shuffle, persistent_workers=True)
 
     def _predict_dataloader(self, shuffle=False):
         if isinstance(self.datasets['predict'], Txt2ImgIterableBaseDataset) or self.use_worker_init_fn:
@@ -234,7 +241,7 @@ class DataModuleFromConfig(pl.LightningDataModule):
         else:
             init_fn = None
         return DataLoader(self.datasets["predict"], batch_size=self.batch_size,
-                          num_workers=self.num_workers, worker_init_fn=init_fn)
+                          num_workers=self.num_workers, worker_init_fn=init_fn, persistent_workers=True)
 
 
 class SetupCallback(Callback):
@@ -257,9 +264,9 @@ class SetupCallback(Callback):
     def on_pretrain_routine_start(self, trainer, pl_module):
         if trainer.global_rank == 0:
             # Create logdirs and save configs
-            os.makedirs(self.logdir, exist_ok=True)
-            os.makedirs(self.ckptdir, exist_ok=True)
-            os.makedirs(self.cfgdir, exist_ok=True)
+            # os.makedirs(self.logdir, exist_ok=True)
+            # os.makedirs(self.ckptdir, exist_ok=True)
+            # os.makedirs(self.cfgdir, exist_ok=True)
 
             if "callbacks" in self.lightning_config:
                 if 'metrics_over_trainsteps_checkpoint' in self.lightning_config['callbacks']:
@@ -274,17 +281,75 @@ class SetupCallback(Callback):
             OmegaConf.save(OmegaConf.create({"lightning": self.lightning_config}),
                            os.path.join(self.cfgdir, "{}-lightning.yaml".format(self.now)))
 
-        else:
-            # ModelCheckpoint callback created log directory --- remove it
-            if not self.resume and os.path.exists(self.logdir):
-                dst, name = os.path.split(self.logdir)
-                dst = os.path.join(dst, "child_runs", name)
-                os.makedirs(os.path.split(dst)[0], exist_ok=True)
-                try:
-                    os.rename(self.logdir, dst)
-                except FileNotFoundError:
-                    pass
+def get_world_size():
+    if not dist.is_available():
+        return 1
+    if not dist.is_initialized():
+        return 1
+    return dist.get_world_size()
 
+def all_gather(data):
+    """
+    Run all_gather on arbitrary picklable data (not necessarily tensors)
+    Args:
+        data: any picklable object
+    Returns:
+        list[data]: list of data gathered from each rank
+    """
+    world_size = get_world_size()
+    if world_size == 1:
+        return [data]
+
+    # serialized to a Tensor
+    origin_size = None
+    if not isinstance(data, torch.Tensor):
+        buffer = pickle.dumps(data)
+        storage = torch.ByteStorage.from_buffer(buffer)
+        tensor = torch.ByteTensor(storage).to("cuda")
+    else:
+        origin_size = data.size()
+        tensor = data.reshape(-1)
+
+    tensor_type = tensor.dtype
+
+    # obtain Tensor size of each rank
+    local_size = torch.LongTensor([tensor.numel()]).to("cuda")
+    size_list = [torch.LongTensor([0]).to("cuda") for _ in range(world_size)]
+    dist.all_gather(size_list, local_size)
+    size_list = [int(size.item()) for size in size_list]
+    max_size = max(size_list)
+
+    # receiving Tensor from all ranks
+    # we pad the tensor because torch all_gather does not support
+    # gathering tensors of different shapes
+    tensor_list = []
+    for _ in size_list:
+        tensor_list.append(torch.FloatTensor(size=(max_size,)).cuda().to(tensor_type))
+    if local_size != max_size:
+        padding = torch.FloatTensor(size=(max_size - local_size,)).cuda().to(tensor_type)
+        tensor = torch.cat((tensor, padding), dim=0)
+    dist.all_gather(tensor_list, tensor)
+
+    data_list = []
+    for size, tensor in zip(size_list, tensor_list):
+        if origin_size is None:
+            buffer = tensor.cpu().numpy().tobytes()[:size]
+            data_list.append(pickle.loads(buffer))
+        else:
+            buffer = tensor[:size]
+            data_list.append(buffer)
+
+    if origin_size is not None:
+        new_shape = [-1] + list(origin_size[1:])
+        resized_list = []
+        for data in data_list:
+            # suppose the difference of tensor size exist in first dimension
+            data = data.reshape(new_shape)
+            resized_list.append(data)
+
+        return resized_list
+    else:
+        return data_list
 
 class ImageLogger(Callback):
     def __init__(self, batch_frequency, max_images, clamp=True, increase_log_steps=True,
@@ -297,7 +362,7 @@ class ImageLogger(Callback):
         self.logger_log_images = {
             pl.loggers.TestTubeLogger: self._testtube,
         }
-        self.log_steps = [2 ** n for n in range(int(np.log2(self.batch_freq)) + 1)]
+        self.log_steps = [2 ** n for n in range(6, int(np.log2(self.batch_freq)) + 1)]
         if not increase_log_steps:
             self.log_steps = [self.batch_freq]
         self.clamp = clamp
@@ -318,31 +383,43 @@ class ImageLogger(Callback):
                 global_step=pl_module.global_step)
 
     @rank_zero_only
-    def log_local(self, save_dir, split, images,
+    def log_local(self, save_dir, split, images, prompts,
                   global_step, current_epoch, batch_idx):
         root = os.path.join(save_dir, "images", split)
+        names = {"reals": "before", "inputs": "after", "reconstruction": "before-vq", "samples": "after-gen"}
+        # print(root)
         for k in images:
-            grid = torchvision.utils.make_grid(images[k], nrow=4)
+            grid = torchvision.utils.make_grid(images[k], nrow=8)
             if self.rescale:
                 grid = (grid + 1.0) / 2.0  # -1,1 -> 0,1; c,h,w
             grid = grid.transpose(0, 1).transpose(1, 2).squeeze(-1)
             grid = grid.numpy()
             grid = (grid * 255).astype(np.uint8)
-            filename = "{}_gs-{:06}_e-{:06}_b-{:06}.png".format(
-                k,
+            filename = "gs-{:06}_e-{:06}_b-{:06}_{}.png".format(
                 global_step,
                 current_epoch,
-                batch_idx)
+                batch_idx,
+                names[k])
             path = os.path.join(root, filename)
             os.makedirs(os.path.split(path)[0], exist_ok=True)
+            # print(path)
             Image.fromarray(grid).save(path)
+
+        filename = "gs-{:06}_e-{:06}_b-{:06}_prompt.json".format(
+            global_step,
+            current_epoch,
+            batch_idx)
+        path = os.path.join(root, filename)
+        with open(path, "w") as f:
+            for p in prompts:
+                f.write(f"{json.dumps(p)}\n")
 
     def log_img(self, pl_module, batch, batch_idx, split="train"):
         check_idx = batch_idx if self.log_on_batch_idx else pl_module.global_step
         if (self.check_frequency(check_idx) and  # batch_idx % self.batch_freq == 0
                 hasattr(pl_module, "log_images") and
                 callable(pl_module.log_images) and
-                self.max_images > 0):
+                self.max_images > 0) or (split == "val" and batch_idx == 0):
             logger = type(pl_module.logger)
 
             is_train = pl_module.training
@@ -352,15 +429,19 @@ class ImageLogger(Callback):
             with torch.no_grad():
                 images = pl_module.log_images(batch, split=split, **self.log_images_kwargs)
 
+            prompts = batch["edit"]["c_crossattn"][:self.max_images]
+            prompts = [p for ps in all_gather(prompts) for p in ps]
+
             for k in images:
                 N = min(images[k].shape[0], self.max_images)
                 images[k] = images[k][:N]
+                images[k] = torch.cat(all_gather(images[k][:N]))
                 if isinstance(images[k], torch.Tensor):
                     images[k] = images[k].detach().cpu()
                     if self.clamp:
                         images[k] = torch.clamp(images[k], -1., 1.)
 
-            self.log_local(pl_module.logger.save_dir, split, images,
+            self.log_local(pl_module.logger.save_dir, split, images, prompts,
                            pl_module.global_step, pl_module.current_epoch, batch_idx)
 
             logger_log_images = self.logger_log_images.get(logger, lambda *args, **kwargs: None)
@@ -372,11 +453,8 @@ class ImageLogger(Callback):
     def check_frequency(self, check_idx):
         if ((check_idx % self.batch_freq) == 0 or (check_idx in self.log_steps)) and (
                 check_idx > 0 or self.log_first_step):
-            try:
+            if len(self.log_steps) > 0:
                 self.log_steps.pop(0)
-            except IndexError as e:
-                print(e)
-                pass
             return True
         return False
 
@@ -468,46 +546,30 @@ if __name__ == "__main__":
     parser = Trainer.add_argparse_args(parser)
 
     opt, unknown = parser.parse_known_args()
-    if opt.name and opt.resume:
-        raise ValueError(
-            "-n/--name and -r/--resume cannot be specified both."
-            "If you want to resume training in a new log folder, "
-            "use -n/--name in combination with --resume_from_checkpoint"
-        )
-    if opt.resume:
-        if not os.path.exists(opt.resume):
-            raise ValueError("Cannot find {}".format(opt.resume))
-        if os.path.isfile(opt.resume):
-            paths = opt.resume.split("/")
-            # idx = len(paths)-paths[::-1].index("logs")+1
-            # logdir = "/".join(paths[:idx])
-            logdir = "/".join(paths[:-2])
-            ckpt = opt.resume
-        else:
-            assert os.path.isdir(opt.resume), opt.resume
-            logdir = opt.resume.rstrip("/")
-            ckpt = os.path.join(logdir, "checkpoints", "last.ckpt")
 
+    assert opt.name
+    cfg_fname = os.path.split(opt.base[0])[-1]
+    cfg_name = os.path.splitext(cfg_fname)[0]
+    nowname = f"{cfg_name}_{opt.name}"
+    logdir = os.path.join(opt.logdir, nowname)
+    ckpt = os.path.join(logdir, "checkpoints", "last.ckpt")
+
+    if os.path.isfile(ckpt):
         opt.resume_from_checkpoint = ckpt
         base_configs = sorted(glob.glob(os.path.join(logdir, "configs/*.yaml")))
         opt.base = base_configs + opt.base
         _tmp = logdir.split("/")
         nowname = _tmp[-1]
-    else:
-        if opt.name:
-            name = "_" + opt.name
-        elif opt.base:
-            cfg_fname = os.path.split(opt.base[0])[-1]
-            cfg_name = os.path.splitext(cfg_fname)[0]
-            name = "_" + cfg_name
-        else:
-            name = ""
-        nowname = now + name + opt.postfix
-        logdir = os.path.join(opt.logdir, nowname)
+        # By default, when finetuning from Stable Diffusion, we load the EMA-only checkpoint to initialize all weights.
+        # If resuming InstructPix2Pix from a finetuning checkpoint, instead load both EMA and non-EMA weights.
+        opt.model.params.load_ema = True
 
     ckptdir = os.path.join(logdir, "checkpoints")
     cfgdir = os.path.join(logdir, "configs")
-    seed_everything(opt.seed)
+
+    os.makedirs(logdir, exist_ok=True)
+    os.makedirs(ckptdir, exist_ok=True)
+    os.makedirs(cfgdir, exist_ok=True)
 
     try:
         # init and save configs
@@ -544,7 +606,6 @@ if __name__ == "__main__":
                 "params": {
                     "name": nowname,
                     "save_dir": logdir,
-                    "offline": opt.debug,
                     "id": nowname,
                 }
             },
@@ -556,7 +617,7 @@ if __name__ == "__main__":
                 }
             },
         }
-        default_logger_cfg = default_logger_cfgs["testtube"]
+        default_logger_cfg = default_logger_cfgs["wandb"]
         if "logger" in lightning_config:
             logger_cfg = lightning_config.logger
         else:
@@ -575,10 +636,6 @@ if __name__ == "__main__":
                 "save_last": True,
             }
         }
-        if hasattr(model, "monitor"):
-            print(f"Monitoring {model.monitor} as checkpoint metric.")
-            default_modelckpt_cfg["params"]["monitor"] = model.monitor
-            default_modelckpt_cfg["params"]["save_top_k"] = 3
 
         if "modelcheckpoint" in lightning_config:
             modelckpt_cfg = lightning_config.modelcheckpoint
@@ -630,23 +687,22 @@ if __name__ == "__main__":
         else:
             callbacks_cfg = OmegaConf.create()
 
-        if 'metrics_over_trainsteps_checkpoint' in callbacks_cfg:
-            print(
-                'Caution: Saving checkpoints every n train steps without deleting. This might require some free space.')
-            default_metrics_over_trainsteps_ckpt_dict = {
-                'metrics_over_trainsteps_checkpoint':
-                    {"target": 'pytorch_lightning.callbacks.ModelCheckpoint',
-                     'params': {
-                         "dirpath": os.path.join(ckptdir, 'trainstep_checkpoints'),
-                         "filename": "{epoch:06}-{step:09}",
-                         "verbose": True,
-                         'save_top_k': -1,
-                         'every_n_train_steps': 10000,
-                         'save_weights_only': True
-                     }
-                     }
+        print(
+            'Caution: Saving checkpoints every n train steps without deleting. This might require some free space.')
+        default_metrics_over_trainsteps_ckpt_dict = {
+            'metrics_over_trainsteps_checkpoint': {
+                "target": 'pytorch_lightning.callbacks.ModelCheckpoint',
+                'params': {
+                    "dirpath": os.path.join(ckptdir, 'trainstep_checkpoints'),
+                    "filename": "{epoch:06}-{step:09}",
+                    "verbose": True,
+                    'save_top_k': -1,
+                    'every_n_train_steps': 1000,
+                    'save_weights_only': True
+                }
             }
-            default_callbacks_cfg.update(default_metrics_over_trainsteps_ckpt_dict)
+        }
+        default_callbacks_cfg.update(default_metrics_over_trainsteps_ckpt_dict)
 
         callbacks_cfg = OmegaConf.merge(default_callbacks_cfg, callbacks_cfg)
         if 'ignore_keys_callback' in callbacks_cfg and hasattr(trainer_opt, 'resume_from_checkpoint'):
@@ -656,7 +712,7 @@ if __name__ == "__main__":
 
         trainer_kwargs["callbacks"] = [instantiate_from_config(callbacks_cfg[k]) for k in callbacks_cfg]
 
-        trainer = Trainer.from_argparse_args(trainer_opt, **trainer_kwargs)
+        trainer = Trainer.from_argparse_args(trainer_opt, plugins=DDPPlugin(find_unused_parameters=False), **trainer_kwargs)
         trainer.logdir = logdir  ###
 
         # data
