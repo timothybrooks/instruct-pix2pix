@@ -73,7 +73,7 @@ def download_image(url):
     image = image.convert("RGB")
     return image
 
-image = download_image(URL)
+image = download_image(url)
 
 prompt = "turn him into cyborg"
 images = pipe(prompt, image=image, num_inference_steps=10, image_guidance_scale=1).images
