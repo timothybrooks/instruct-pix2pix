@@ -45,11 +45,8 @@ _(For advice on how to get the best results by tuning parameters, see the [Tips]
 1. Install diffusers and relevant dependencies:
 
 ```bash
-
 pip install transformers accelerate torch
-
 pip install git+https://github.com/huggingface/diffusers.git
-
 ```
 
 2. Load the model, an example image and run the model directly in Python:
