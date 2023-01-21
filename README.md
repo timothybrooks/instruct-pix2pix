@@ -15,7 +15,6 @@ PyTorch implementation of InstructPix2Pix, an instruction-based image editing mo
 
 To quickly test Intruct-Pix2Pix you can either use the original repository or [🧨 Diffusers](https://github.com/huggingface/diffusers).
 
-
 ### Original repository 
 
 Set up a conda environment, and download a pretrained model:
