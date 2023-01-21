@@ -13,6 +13,11 @@ PyTorch implementation of InstructPix2Pix, an instruction-based image editing mo
 
 ## TL;DR: quickstart 
 
+To quickly test Intruct-Pix2Pix you can either use the original repository or [🧨 Diffusers](https://github.com/huggingface/diffusers).
+
+
+### Original codebase
+
 Set up a conda environment, and download a pretrained model:
 ```
 conda env create -f environment.yaml
@@ -35,6 +40,62 @@ python edit_app.py
 ![Edit app](https://github.com/timothybrooks/instruct-pix2pix/blob/main/imgs/edit_app.jpg?raw=true)
 
 _(For advice on how to get the best results by tuning parameters, see the [Tips](https://github.com/timothybrooks/instruct-pix2pix#tips) section)._
+
+### 🧨 Diffusers
+
+1. Install diffusers and relevant dependencies:
+
+```bash
+
+pip install transformers accelerate torch
+
+pip install git+https://github.com/huggingface/diffusers.git
+
+```
+
+2. Load the model, an example image and run the model directly in Python:
+
+```python
+
+import PIL
+
+import requests
+
+import torch
+
+from diffusers import StableDiffusionInstructPix2PixPipeline, EulerAncestralDiscreteScheduler
+
+model_id = "timbrooks/instruct-pix2pix"
+
+pipe = StableDiffusionInstructPix2PixPipeline.from_pretrained(model_id, torch_dtype=torch.float16)
+
+pipe.to("cuda")
+
+pipe.scheduler = EulerAncestralDiscreteScheduler.from_config(pipe.scheduler.config)
+
+url = "https://raw.githubusercontent.com/timothybrooks/instruct-pix2pix/main/imgs/example.jpg"
+
+def download_image(url):
+
+    image = PIL.Image.open(requests.get(url, stream=True).raw)
+
+    image = PIL.ImageOps.exif_transpose(image)
+
+    image = image.convert("RGB")
+
+    return image
+
+image = download_image(URL)
+
+prompt = "turn him into cyborg"
+
+images = pipe(prompt, image=image, num_inference_steps=10, image_guidance_scale=1).images
+
+images[0]
+
+```
+
+For more information, dvanced use cases check the docs [here](https://huggingface.co/docs/diffusers/main/en/api/pipelines/stable_diffusion/pix2pix)
 
 ## Setup
 
