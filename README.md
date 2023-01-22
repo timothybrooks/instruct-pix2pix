@@ -35,6 +35,17 @@ python edit_app.py
 ![Edit app](https://github.com/timothybrooks/instruct-pix2pix/blob/main/imgs/edit_app.jpg?raw=true)
 
 _(For advice on how to get the best results by tuning parameters, see the [Tips](https://github.com/timothybrooks/instruct-pix2pix#tips) section)._
+### Quickstart via [Imaginairy](https://github.com/brycedrennan/imaginAIry#-edit-images-with-instructions-alone-by-instructpix2pix)
+**(alternative installation method)**
+```bash
+pip install imaginairy --upgrade
+# edit a single image and make a gif showing the difference
+aimg edit any-image.jpg --gif "turn him into a cyborg" 
+# make a bunch of pre-determined edits and turn them into a gif
+aimg edit --gif --surprise-me pearl-earring.jpg 
+```
+<img src="https://raw.githubusercontent.com/brycedrennan/imaginAIry/7c05c3aae2740278978c5e84962b826e58201bac/assets/girl_with_a_pearl_earring_suprise.gif" height="512">
+
 
 ## Setup
 
