@@ -223,8 +223,8 @@ def main():
             args.dataset, 
             args.output_path, 
             scales_img, 
-            scales_txt
-            steps = args.steps
+            scales_txt,
+            steps = args.steps,
             )
     
     plot_metrics(metrics_file, args.output_path)
