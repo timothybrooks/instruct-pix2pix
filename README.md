@@ -220,7 +220,7 @@ If you're not getting the quality result you want, there may be a few reasons:
 > ```
 > aimg edit --gif --surprise-me pearl-earring.jpg 
 > ```
-> <img src="https://raw.githubusercontent.com/brycedrennan/imaginAIry/7c05c3aae2740278978c5e84962b826e58201bac/assets/girl_with_a_pearl_earring_suprise.gif" height="512">
+> <img src="https://raw.githubusercontent.com/brycedrennan/imaginAIry/7c05c3aae2740278978c5e84962b826e58201bac/assets/girl_with_a_pearl_earring_suprise.gif" height="512" width="512">
 
 ### InstructPix2Pix in [🧨 Diffusers](https://github.com/huggingface/diffusers):
 
