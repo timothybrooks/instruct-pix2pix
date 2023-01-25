@@ -1,4 +1,5 @@
 checkpoints/*
+src/*
 **/__pycache__/**
 
 # Distribution / packaging
