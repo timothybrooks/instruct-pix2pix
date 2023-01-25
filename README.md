@@ -13,14 +13,16 @@ PyTorch implementation of InstructPix2Pix, an instruction-based image editing mo
 
 ## TL;DR: quickstart 
 
-Set up a conda environment, and download a pretrained model:
+Follow the instructions below to download and run InstructPix2Pix on your own images. These instructions have been tested on a GPU with >18GB VRAM. If you don't have a GPU, you may need to change the default configuration, or check out [other ways of using the model](https://github.com/timothybrooks/instruct-pix2pix#other-ways-of-using-instructpix2pix). 
+
+### Set up a conda environment, and download a pretrained model:
 ```
 conda env create -f environment.yaml
 conda activate ip2p
 bash scripts/download_checkpoints.sh
 ```
 
-Edit a single image:
+### Edit a single image:
 ```
 python edit_cli.py --input imgs/example.jpg --output imgs/output.jpg --edit "turn him into a cyborg"
 
@@ -28,7 +30,7 @@ python edit_cli.py --input imgs/example.jpg --output imgs/output.jpg --edit "tur
 # python edit_cli.py --steps 100 --resolution 512 --seed 1371 --cfg-text 7.5 --cfg-image 1.2 --input imgs/example.jpg --output imgs/output.jpg --edit "turn him into a cyborg"
 ```
 
-Or launch your own interactive editing Gradio app:
+### Or launch your own interactive editing Gradio app:
 ```
 python edit_app.py 
 ```
@@ -203,6 +205,48 @@ If you're not getting the quality result you want, there may be a few reasons:
   year={2022}
 }
 ```
+## Other ways of using InstructPix2Pix
 
+### InstructPix2Pix on [HuggingFace](https://huggingface.co/spaces/timbrooks/instruct-pix2pix):
+> A browser-based version of the demo is available as a [HuggingFace space](https://huggingface.co/spaces/timbrooks/instruct-pix2pix). For this version, you only need a browser, a picture you want to edit, and an instruction! Note that this is a shared online demo, and processing time may be slower during peak utilization. 
 
+### InstructPix2Pix in [Imaginairy](https://github.com/brycedrennan/imaginAIry#-edit-images-with-instructions-alone-by-instructpix2pix):
+> Imaginairy offers another way of easily installing InstructPix2Pix with a single command. It can run on devices without GPUs (like a Macbook!). 
+> ```bash
+> pip install imaginairy --upgrade
+> aimg edit any-image.jpg --gif "turn him into a cyborg" 
+> ```
+> It also offers an easy way to perform a bunch of edits on an image, and can save edits out to an animated GIF:
+> ```
+> aimg edit --gif --surprise-me pearl-earring.jpg 
+> ```
+> <img src="https://raw.githubusercontent.com/brycedrennan/imaginAIry/7c05c3aae2740278978c5e84962b826e58201bac/assets/girl_with_a_pearl_earring_suprise.gif" width="512">
 
+### InstructPix2Pix in [🧨 Diffusers](https://github.com/huggingface/diffusers):
+
+> InstructPix2Pix in Diffusers is a bit more optimized, so it may be faster and more suitable for GPUs with less memory. Below are instructions for installing the library and editing an image: 
+> 1. Install diffusers and relevant dependencies:
+>
+> ```bash
+> pip install transformers accelerate torch
+>
+> pip install git+https://github.com/huggingface/diffusers.git
+> ```
+> 
+> 2. Load the model and edit the image:
+>
+> ```python
+> 
+> import torch
+> from diffusers import StableDiffusionInstructPix2PixPipeline, EulerAncestralDiscreteScheduler
+> 
+> model_id = "timbrooks/instruct-pix2pix"
+> pipe = StableDiffusionInstructPix2PixPipeline.from_pretrained(model_id, torch_dtype=torch.float16, safety_checker=None)
+> pipe.to("cuda")
+> pipe.scheduler = EulerAncestralDiscreteScheduler.from_config(pipe.scheduler.config)
+> # `image` is an RGB PIL.Image
+> images = pipe("turn him into cyborg", image=image).images
+> images[0]
+> ```
+> 
+> For more information, check the docs [here](https://huggingface.co/docs/diffusers/main/en/api/pipelines/stable_diffusion/pix2pix).
