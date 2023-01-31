@@ -210,6 +210,9 @@ If you're not getting the quality result you want, there may be a few reasons:
 ### InstructPix2Pix on [HuggingFace](https://huggingface.co/spaces/timbrooks/instruct-pix2pix):
 > A browser-based version of the demo is available as a [HuggingFace space](https://huggingface.co/spaces/timbrooks/instruct-pix2pix). For this version, you only need a browser, a picture you want to edit, and an instruction! Note that this is a shared online demo, and processing time may be slower during peak utilization. 
 
+### InstructPix2Pix on [Replicate](https://replicate.com/timothybrooks/instruct-pix2pix):
+> Replicate provides a production-ready cloud API for running the InstructPix2Pix model. You can run the model from any environment using a simple API call with cURL, Python, JavaScript, or your language of choice. Replicate also provides a web interface for running the model and sharing predictions.
+
 ### InstructPix2Pix in [Imaginairy](https://github.com/brycedrennan/imaginAIry#-edit-images-with-instructions-alone-by-instructpix2pix):
 > Imaginairy offers another way of easily installing InstructPix2Pix with a single command. It can run on devices without GPUs (like a Macbook!). 
 > ```bash
