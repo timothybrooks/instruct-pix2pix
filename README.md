@@ -182,7 +182,7 @@ python metrics/compute_metrics.py --ckpt /path/to/your/model.ckpt
 If you're not getting the quality result you want, there may be a few reasons:
 1. **Is the image not changing enough?** Your Image CFG weight may be too high. This value dictates how similar the output should be to the input. It's possible your edit requires larger changes from the original image, and your Image CFG weight isn't allowing that. Alternatively, your Text CFG weight may be too low. This value dictates how much to listen to the text instruction. The default Image CFG of 1.5 and Text CFG of 7.5 are a good starting point, but aren't necessarily optimal for each edit. Try:
     * Decreasing the Image CFG weight, or
-    * Incerasing the Text CFG weight, or
+    * Increasing the Text CFG weight, or
 2. Conversely, **is the image changing too much**, such that the details in the original image aren't preserved? Try:
     * Increasing the Image CFG weight, or
     * Decreasing the Text CFG weight
