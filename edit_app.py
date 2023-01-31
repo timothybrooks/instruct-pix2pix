@@ -103,6 +103,7 @@ def main():
     parser.add_argument("--config", default="configs/generate.yaml", type=str)
     parser.add_argument("--ckpt", default="checkpoints/instruct-pix2pix-00-22000.ckpt", type=str)
     parser.add_argument("--vae-ckpt", default=None, type=str)
+    parser.add_argument("--public", action='store_true')
     args = parser.parse_args()
 
     config = OmegaConf.load(args.config)
@@ -261,7 +262,10 @@ def main():
         )
 
     demo.queue(concurrency_count=1)
-    demo.launch(share=True)
+    if args.public:
+        demo.launch(share=True)
+    else:
+        demo.launch(share=False)
 
 
 if __name__ == "__main__":
