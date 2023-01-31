@@ -177,6 +177,9 @@ To generate plots like the ones in Figures 8 and 10 in the paper, run the follow
 python metrics/compute_metrics.py --ckpt /path/to/your/model.ckpt
 ```
 
+## YouTube Tutorial
+[How to use instruct-pix2pix via NMKD Stable Diffusion GUI](https://www.youtube.com/watch?v=EPRa8EZl9Os)
+
 ## Tips
 
 If you're not getting the quality result you want, there may be a few reasons:
