@@ -253,3 +253,73 @@ If you're not getting the quality result you want, there may be a few reasons:
 > ```
 > 
 > For more information, check the docs [here](https://huggingface.co/docs/diffusers/main/en/api/pipelines/stable_diffusion/pix2pix).
+
+### InstructPix2Pix on AWS, GCP, Azure, Lambda, or your own remote GPU:
+
+> You can run InstructPix2Pix on your own GPU using [Runhouse](https://github.com/run-house/runhouse), either through your cloud account (AWS, GCP, Azure, or Lambda) or by specifying an IP (e.g. on-prem, Paperspace, Coreweave, etc.). Below are instructions for installing the library, sending over an inference function or the gradio space to your GPU, and editing an image: 
+> 1. Install Runhouse:
+>
+> ```bash
+> pip install runhouse
+> # If you want Runhouse to automatically allocate the GPU through your 
+> # cloud account, confirm that your creds are set up correctly:
+> sky check
+> ```
+> 
+> 2a (script). Wrap the diffusers code above into an inference function:
+>
+> ```python
+> import runhouse as rh
+> from PIL import Image
+>
+> def instruct_pix2pix_generate(instruction, image, **model_kwargs):
+>     # If we import inside the function, we don't even need these to be installed locally.
+>     import torch
+>     from diffusers import StableDiffusionInstructPix2PixPipeline, EulerAncestralDiscreteScheduler
+> 
+>     model_id = "timbrooks/instruct-pix2pix"
+>     pipe = StableDiffusionInstructPix2PixPipeline.from_pretrained(model_id, torch_dtype=torch.float16, safety_checker=None)
+>     pipe.to("cuda")
+>     pipe.scheduler = EulerAncestralDiscreteScheduler.from_config(pipe.scheduler.config)
+>     return pipe(instruction, image=image, **model_kwargs).images
+> ``` 
+>
+> Define your hardware:
+> 
+> ```python
+> if __name__ == "__main__":
+>     # For GCP, Azure, or Lambda Labs
+>     gpu = rh.cluster(name='rh-a10x', instance_type='A100:1')
+>
+>     # For AWS (single A100s not available, only A10G)
+>     # gpu = rh.cluster(name='rh-a10x', instance_type='A10G:1', provider='aws')
+>
+>     # To use our own GPU (or from a different provider, e.g. Paperspace, Coreweave)
+>     # gpu = rh.cluster(ips=['<ip of the cluster>'],
+>     #                  ssh_creds={'ssh_user': '...', 'ssh_private_key':'<path_to_key>'},
+>     #                  name='rh-a10x')
+>
+>     # AWS, GCP, and Azure instances will auto-terminate after 30 mins of inactivity. To disable:
+>     # gpu.keep_warm()
+> ```
+>
+> Send your function to your GPU and run inferences:
+> 
+> ```python
+>     reqs = ['./', 'torch --upgrade --extra-index-url https://download.pytorch.org/whl/cu117',
+>             'git+https://github.com/huggingface/diffusers.git', 'accelerate', 'transformers']
+>     instruct_pix2pix_generate_gpu = rh.send(fn=instruct_pix2pix_generate).to(gpu, reqs=reqs)
+>
+>     instruction = 'Make this into a beautiful summer painting by Claude Monet.'
+>     base_image = Image.open('your_image.png').convert("RGB").resize((512, 512))
+>
+>     # This takes ~8 mins to run the first time to download the model, and after that should only take ~8 sec per image.
+>     result_images = instruct_pix2pix_generate_gpu(instruction, base_image, num_inference_steps=50)
+>     [image.show() for image in result_images]
+> ```
+>
+> Alternatively, you can run [this script](https://github.com/run-house/funhouse/blob/main/hf_diffusers/instruct_pix2pix.py), which does the above.
+>
+> 2b (gradio). You can send the instruct-pix2pix Hugging Face space to your own GPU too, tunneled back to your browser, using [this script](https://github.com/run-house/funhouse/blob/main/spaces/instruct_pix2pix.py).
+> 
+> For more information, see the [Runhouse](https://github.com/run-house/runhouse) repo.
