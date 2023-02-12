@@ -34,5 +34,6 @@ dependencies:
     - -e git+https://github.com/openai/CLIP.git@main#egg=clip
     - openai
     - gradio
+    - streamlit
     - seaborn
     - git+https://github.com/crowsonkb/k-diffusion.git
