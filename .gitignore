@@ -2,3 +2,4 @@
 .DS_Store
 /checkpoints
 /data
+/stable_diffusion/models/ldm/stable-diffusion-v1
